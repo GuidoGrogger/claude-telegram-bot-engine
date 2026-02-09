@@ -1,0 +1,27 @@
+{
+  "name": "claude-telegram-bot-engine",
+  "version": "1.0.0",
+  "description": "Reusable Telegram bot engine for Claude Code integration",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GuidoGrogger/claude-telegram-bot-engine.git"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "claude",
+    "ai",
+    "anthropic"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.4",
+    "marked": "^17.0.1",
+    "node-telegram-bot-api": "^0.66.0"
+  }
+}
