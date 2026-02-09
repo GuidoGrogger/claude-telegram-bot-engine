@@ -11,6 +11,20 @@ Reusable Telegram bot engine for integrating Claude Code sessions via Telegram m
 - Markdown formatting in responses
 - Group chat support with mention/reply detection
 
+## Prerequisites
+
+Before getting started, ensure you have:
+
+1. **Claude Code installed**:
+   ```bash
+   npm install -g claude
+   ```
+
+2. **Accept Claude Code terms** (run once):
+   ```bash
+   claude --dangerously-skip-permissions
+   ```
+
 ## Installation
 
 ### As a Git Submodule (Recommended)
