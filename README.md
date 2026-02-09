@@ -49,6 +49,27 @@ const { createBot } = require('./bot-engine');
 createBot();
 ```
 
+#### Shell script
+```bash
+mkdir my-new-project
+cd my-new-project
+git init
+git submodule add git@github.com:GuidoGrogger/claude-telegram-bot-engine.git bot-engine
+cd bot-engine && npm install && cd ..
+
+# Create index.js
+echo "const { createBot } = require('./bot-engine');" > index.js
+echo "createBot();" >> index.js
+
+# Copy .env and create CLAUDE.md
+cp ../thailand/.env.example .env
+# Edit .env with your tokens
+# Create CLAUDE.md with project-specific instructions
+
+# Run the bot
+node index.js
+```
+
 3. **Important**: Run the bot from the directory containing your `CLAUDE.md` file. The bot will automatically load project-specific instructions from `CLAUDE.md` when starting Claude Code sessions.
 
 ```bash
