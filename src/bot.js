@@ -44,7 +44,7 @@ function createBot() {
     if (msg.voice) {
       const chatId = msg.chat.id;
       const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
-      if (isGroup) {
+      if (isGroup && !config.respondToAllGroupMessages) {
         if (!botInfo) return;
         const isReply = msg.reply_to_message?.from?.id === botInfo.id;
         if (!isReply) return;
@@ -64,8 +64,8 @@ function createBot() {
     const chatId = msg.chat.id;
     const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
 
-    // In groups, only respond when mentioned or replied to
-    if (isGroup) {
+    // In groups, only respond when mentioned or replied to (unless configured otherwise)
+    if (isGroup && !config.respondToAllGroupMessages) {
       if (!botInfo) return;
       const isMentioned = msg.text.includes(`@${botInfo.username}`);
       const isReply = msg.reply_to_message?.from?.id === botInfo.id;
