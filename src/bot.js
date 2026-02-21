@@ -31,6 +31,12 @@ function createBot() {
   // ── Message handler ───────────────────────────────────────
 
   bot.on("message", (msg) => {
+    // Whitelist check
+    if (config.allowedUserIds.length > 0 && !config.allowedUserIds.includes(msg.from?.id)) {
+      console.log("[bot] blocked user", msg.from?.id, msg.from?.username);
+      return;
+    }
+
     console.log(
       "[bot] message from chat",
       msg.chat.id,
