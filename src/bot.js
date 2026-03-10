@@ -4,6 +4,7 @@ const sessions = require("./sessions");
 const { splitMessage, truncate, toolLine, markdownToHtml } = require("./formatter");
 const config = require("./config");
 const { downloadBuffer, transcribeAudio } = require("./transcribe");
+const { autoCommit } = require("./git");
 
 function createBot() {
   const bot = new TelegramBot(config.telegramToken, { polling: true });
@@ -61,7 +62,8 @@ function createBot() {
         msg.voice.duration,
         msg.voice.file_id,
       );
-      enqueue(chatId, () => handleVoiceMessage(bot, chatId, msg));
+      const username = msg.from?.username || msg.from?.first_name || String(msg.from?.id);
+      enqueue(chatId, () => handleVoiceMessage(bot, chatId, msg, username));
       return;
     }
 
@@ -137,7 +139,8 @@ function createBot() {
       return;
     }
 
-    enqueue(chatId, () => handleMessage(bot, chatId, text));
+    const username = msg.from?.username || msg.from?.first_name || String(msg.from?.id);
+    enqueue(chatId, () => handleMessage(bot, chatId, text, username));
   });
 
   bot.on("polling_error", (err) => {
@@ -162,11 +165,13 @@ function enqueue(chatId, fn) {
 
 // ── Core handler ──────────────────────────────────────────
 
-async function handleMessage(bot, chatId, text) {
+async function handleMessage(bot, chatId, text, username) {
   console.log("[bot] handling message for chat", chatId);
 
   const session = sessions.get(chatId);
   const sessionId = session?.sessionId || null;
+  const isContinuation = sessionId !== null;
+  const previousCost = sessions.getCost(chatId);
   console.log("[bot] session:", sessionId || "(new)");
 
   const placeholder = await bot.sendMessage(chatId, "...");
@@ -257,12 +262,24 @@ async function handleMessage(bot, chatId, text) {
     });
   }
 
+  // Auto-commit and push changes
+  const currentCost = result.cost || 0;
+  const totalCost = previousCost + currentCost;
+  autoCommit({
+    projectDir: process.cwd(),
+    messageText: text,
+    username: username || "unknown",
+    cost: currentCost,
+    totalCost,
+    isContinuation,
+  });
+
   console.log("[bot] done handling chat", chatId);
 }
 
 // ── Voice handler ────────────────────────────────────────
 
-async function handleVoiceMessage(bot, chatId, msg) {
+async function handleVoiceMessage(bot, chatId, msg, username) {
   const placeholder = await bot.sendMessage(chatId, "Transcribing voice message...");
   const msgId = placeholder.message_id;
 
@@ -293,7 +310,7 @@ async function handleVoiceMessage(bot, chatId, msg) {
       })
       .catch((e) => console.error("[bot] edit error:", e.message));
 
-    await handleMessage(bot, chatId, transcription);
+    await handleMessage(bot, chatId, transcription, username);
   } catch (err) {
     console.error("[bot] voice transcription error:", err);
     await bot
