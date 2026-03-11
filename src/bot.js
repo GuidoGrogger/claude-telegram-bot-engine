@@ -1,5 +1,6 @@
 const TelegramBot = require("node-telegram-bot-api");
-const { runClaude } = require("./claude");
+const { getAITool } = require("./ai-tool-factory");
+const { runAITool } = getAITool();
 const sessions = require("./sessions");
 const { splitMessage, truncate, toolLine, markdownToHtml } = require("./formatter");
 const config = require("./config");
@@ -209,10 +210,10 @@ async function handleMessage(bot, chatId, text, username) {
       });
   }
 
-  console.log("[bot] calling runClaude...");
+  console.log("[bot] calling AI tool...");
 
   const model = sessions.getModel(chatId);
-  const result = await runClaude(text, sessionId, {
+  const result = await runAITool(text, sessionId, {
     model,
     onText: (partial) => {
       let display = partial;
@@ -226,7 +227,7 @@ async function handleMessage(bot, chatId, text, username) {
   });
 
   console.log(
-    "[bot] runClaude done. isError:",
+    "[bot] AI tool done. isError:",
     result.isError,
     "sessionId:",
     result.sessionId,

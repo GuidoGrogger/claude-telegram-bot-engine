@@ -1,6 +1,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { extractText, extractTools, MODEL_IDS, DEFAULT_MODEL } = require("../claude");
+const aiToolsClaude = require("../ai-tools/claude");
 
 describe("extractText", () => {
   it("extracts text from content array", () => {
@@ -66,5 +67,20 @@ describe("MODEL_IDS", () => {
 
   it("default model is haiku", () => {
     assert.equal(DEFAULT_MODEL, "haiku");
+  });
+});
+
+describe("backwards-compat re-export", () => {
+  it("re-exports runAITool as runClaude", () => {
+    const { runClaude } = require("../claude");
+    assert.equal(typeof runClaude, "function");
+    assert.equal(runClaude, aiToolsClaude.runAITool);
+  });
+
+  it("re-exports helpers from ai-tools/claude", () => {
+    assert.equal(extractText, aiToolsClaude.extractText);
+    assert.equal(extractTools, aiToolsClaude.extractTools);
+    assert.deepEqual(MODEL_IDS, aiToolsClaude.MODEL_IDS);
+    assert.equal(DEFAULT_MODEL, aiToolsClaude.DEFAULT_MODEL);
   });
 });
