@@ -132,4 +132,4 @@ function extractTools(content) {
   return content.filter((c) => c.type === "tool_use").map((c) => c.name);
 }
 
-module.exports = { runClaude };
+module.exports = { runClaude, extractText, extractTools, MODEL_IDS, DEFAULT_MODEL };

@@ -15,18 +15,21 @@ const os = require("os");
  * @param {number} opts.totalCost    - Cumulative session cost (USD)
  * @param {boolean} opts.isContinuation - Whether this is a follow-up in the same session
  */
-function autoCommit({ projectDir, messageText, username, cost, totalCost, isContinuation }) {
-  // Build commit message (full message, no truncation)
-  let commitMsg;
+function buildCommitMessage({ messageText, username, cost, totalCost, isContinuation }) {
   if (isContinuation) {
-    commitMsg =
+    return (
       `[Bot/Fortsetzung] @${username}: "${messageText}"\n\n` +
-      `Neue Kosten: $${cost.toFixed(4)} | Gesamt: $${totalCost.toFixed(4)}`;
-  } else {
-    commitMsg =
-      `[Bot] @${username}: "${messageText}"\n\n` +
-      `Kosten: $${cost.toFixed(4)}`;
+      `Neue Kosten: $${cost.toFixed(4)} | Gesamt: $${totalCost.toFixed(4)}`
+    );
   }
+  return (
+    `[Bot] @${username}: "${messageText}"\n\n` +
+    `Kosten: $${cost.toFixed(4)}`
+  );
+}
+
+function autoCommit({ projectDir, messageText, username, cost, totalCost, isContinuation }) {
+  const commitMsg = buildCommitMessage({ messageText, username, cost, totalCost, isContinuation });
 
   try {
     // Commit project directory (excludes bot-engine submodule changes)
@@ -67,4 +70,4 @@ function hasChanges(dir) {
   }
 }
 
-module.exports = { autoCommit };
+module.exports = { autoCommit, buildCommitMessage, hasChanges };

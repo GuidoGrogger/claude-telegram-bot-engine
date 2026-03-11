@@ -40,3 +40,4 @@ class SessionStore {
 }
 
 module.exports = new SessionStore();
+module.exports.SessionStore = SessionStore;
