@@ -5,6 +5,7 @@ const { splitMessage, truncate, toolLine, markdownToHtml } = require("./formatte
 const config = require("./config");
 const { downloadBuffer, transcribeAudio } = require("./transcribe");
 const { autoCommit } = require("./git");
+const { execSync } = require("child_process");
 
 function createBot() {
   const bot = new TelegramBot(config.telegramToken, { polling: true });
@@ -22,6 +23,7 @@ function createBot() {
       { command: "sonnet", description: "Switch to Claude Sonnet" },
       { command: "haiku", description: "Switch to Claude Haiku" },
       { command: "opus", description: "Switch to Claude Opus" },
+      { command: "status", description: "Show git status" },
       { command: "help", description: "Show help message" },
     ];
     bot.setMyCommands(commands).catch((err) => {
@@ -116,6 +118,7 @@ function createBot() {
           "/sonnet  – Switch to Claude Sonnet",
           "/haiku   – Switch to Claude Haiku",
           "/opus    – Switch to Claude Opus",
+          "/status  – Show git status",
           "/help    – Show this message",
           "",
           "📊 Session Information:",
@@ -130,6 +133,11 @@ function createBot() {
     }
     if (/^\/start(@\w+)?$/.test(text)) {
       bot.sendMessage(chatId, "Send any message to start a Claude session.");
+      return;
+    }
+    if (/^\/status(@\w+)?$/.test(text)) {
+      console.log("[bot] /status from chat", chatId);
+      handleGitStatus(bot, chatId);
       return;
     }
     if (/^\/(sonnet|haiku|opus)(@\w+)?$/.test(text)) {
@@ -319,6 +327,29 @@ async function handleVoiceMessage(bot, chatId, msg, username) {
         message_id: msgId,
       })
       .catch((e) => console.error("[bot] edit error:", e.message));
+  }
+}
+
+// ── Git status handler ────────────────────────────────────
+
+function handleGitStatus(bot, chatId) {
+  try {
+    const cwd = process.cwd();
+    const status = execSync("git status --short", { cwd, encoding: "utf8" }).trim();
+    const log = execSync("git log --oneline -10", { cwd, encoding: "utf8" }).trim();
+
+    const lines = ["📂 Git Status"];
+    if (status) {
+      lines.push("", "Changes:", status);
+    } else {
+      lines.push("", "Working tree clean.");
+    }
+    lines.push("", "Recent commits:", log);
+
+    bot.sendMessage(chatId, lines.join("\n"));
+  } catch (err) {
+    console.error("[bot] git status error:", err.message);
+    bot.sendMessage(chatId, `Git status error: ${err.message}`);
   }
 }
 
