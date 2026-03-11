@@ -1,29 +1,36 @@
 # Claude Telegram Bot Engine
 
-Reusable Telegram bot engine for integrating Claude Code sessions via Telegram messages.
+Reusable Telegram bot engine for integrating AI Code sessions (Claude Code or GitHub Copilot CLI) via Telegram messages.
 
 ## Features
 
-- Interactive Claude Code sessions via Telegram
+- Interactive AI sessions via Telegram (Claude Code or GitHub Copilot CLI)
+- **Flexible AI Tool Support**: Switch between Claude Code and GitHub Copilot CLI with a single environment variable
 - Voice message transcription
 - Session management with cost tracking
-- Support for multiple Claude models (Sonnet, Haiku, Opus)
+- Support for multiple models (Claude Sonnet, Haiku, Opus, GPT models, Gemini)
 - Markdown formatting in responses
 - Group chat support with mention/reply detection
 
 ## Prerequisites
 
-Before getting started, ensure you have:
+You need one of the following AI tools installed:
 
-1. **Claude Code installed**:
-   ```bash
-   npm install -g claude
-   ```
+### Option A: Claude Code (Default)
+```bash
+npm install -g claude
+# Accept Claude Code terms (run once):
+claude --dangerously-skip-permissions
+```
 
-2. **Accept Claude Code terms** (run once):
-   ```bash
-   claude --dangerously-skip-permissions
-   ```
+### Option B: GitHub Copilot CLI
+```bash
+npm install -g @github/copilot
+# Authenticate with GitHub:
+copilot --auth login
+```
+
+You only need one installed depending on which tool you want to use.
 
 ## Installation
 
@@ -129,6 +136,21 @@ The engine uses environment variables from `.env`:
 
 - `TELEGRAM_TOKEN` - Your Telegram bot token (required)
 - `OPENAI_API_KEY` - Your OpenAI API key for transcription (required)
+- `AI_TOOL` - Which AI tool to use: `claude` (default) or `copilot`
+
+### Selecting Your AI Tool
+
+Set the `AI_TOOL` environment variable in your `.env` file:
+
+```env
+# Use Claude Code (default)
+AI_TOOL=claude
+
+# Or use GitHub Copilot CLI
+AI_TOOL=copilot
+```
+
+**Note:** Both tools support the same interface, so switching between them requires only changing this variable. No code changes needed.
 
 Additional settings are configured in `src/config.js`:
 - `editInterval`: Minimum ms between message edits (default: 2000)
@@ -174,14 +196,17 @@ WantedBy=multi-user.target
 ```
 bot-engine/
 ├── src/
-│   ├── bot.js         # Core bot logic
-│   ├── claude.js      # Claude API interactions
-│   ├── sessions.js    # Session management
-│   ├── config.js      # Configuration
-│   ├── transcribe.js  # Voice transcription
-│   └── formatter.js   # Message formatting
-├── index.js           # Entry point
-└── package.json       # Dependencies
+│   ├── ai-tool-factory.js  # Factory for selecting AI tool (Claude or Copilot)
+│   ├── ai-tools/           # AI tool implementations
+│   │   ├── claude.js       # Claude Code integration
+│   │   └── copilot.js      # GitHub Copilot CLI integration
+│   ├── bot.js              # Core bot logic
+│   ├── sessions.js         # Session management
+│   ├── config.js           # Configuration
+│   ├── transcribe.js       # Voice transcription
+│   └── formatter.js        # Message formatting
+├── index.js                # Entry point
+└── package.json            # Dependencies
 ```
 
 ## License

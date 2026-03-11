@@ -1,9 +1,9 @@
 const TelegramBot = require("node-telegram-bot-api");
+const config = require("./config");
 const { getAITool } = require("./ai-tool-factory");
 const { runAITool } = getAITool();
 const sessions = require("./sessions");
 const { splitMessage, truncate, toolLine, markdownToHtml } = require("./formatter");
-const config = require("./config");
 const { downloadBuffer, transcribeAudio } = require("./transcribe");
 const { autoCommit } = require("./git");
 const { execSync } = require("child_process");

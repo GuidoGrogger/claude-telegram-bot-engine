@@ -4,7 +4,8 @@
   "description": "Reusable Telegram bot engine for Claude Code integration",
   "main": "index.js",
   "scripts": {
-    "test": "node --test src/__tests__/*.test.js"
+    "test": "node --test src/__tests__/*.test.js",
+    "postinstall": "node scripts/patch-vscode-jsonrpc.js"
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@github/copilot-sdk": "^0.1.32",
     "dotenv": "^17.2.4",
     "marked": "^17.0.1",
     "node-telegram-bot-api": "^0.66.0"

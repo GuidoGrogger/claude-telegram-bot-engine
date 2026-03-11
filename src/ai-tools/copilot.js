@@ -1,4 +1,9 @@
-const { spawn } = require("child_process");
+// @github/copilot-sdk is ESM-only, so we lazy-load via dynamic import()
+let _sdk = null;
+async function getSDK() {
+  if (!_sdk) _sdk = await import("@github/copilot-sdk");
+  return _sdk;
+}
 
 const MODEL_IDS = {
   haiku: "claude-haiku-4.5",
@@ -8,129 +13,110 @@ const MODEL_IDS = {
 
 const DEFAULT_MODEL = "haiku";
 
-function runAITool(prompt, sessionId, { onText, onTool, model } = {}) {
-  return new Promise((resolve) => {
-    const modelId = MODEL_IDS[model] || MODEL_IDS[DEFAULT_MODEL];
-    const args = [
-      "-p",
-      prompt,
-      "--model",
-      modelId,
-      "--output-format",
-      "json",
-      "--allow-all",
-      "--autopilot",
-    ];
+// Shared client instance — lazily initialized, reused across calls
+let sharedClient = null;
 
+async function getClient() {
+  if (sharedClient && sharedClient.getState() === "connected") {
+    return sharedClient;
+  }
+  const { CopilotClient } = await getSDK();
+  sharedClient = new CopilotClient({ autoStart: true });
+  await sharedClient.start();
+  return sharedClient;
+}
+
+async function runAITool(prompt, sessionId, { onText, onTool, model } = {}) {
+  const modelId = MODEL_IDS[model] || MODEL_IDS[DEFAULT_MODEL];
+  const { approveAll } = await getSDK();
+  let fullText = "";
+  let allTools = new Set();
+  let totalCost = 0;
+
+  try {
+    const client = await getClient();
+
+    console.log("[copilot-sdk] creating session, model:", modelId, "resume:", sessionId || "none");
+
+    let session;
     if (sessionId) {
-      args.push("--resume", sessionId);
+      session = await client.resumeSession(sessionId, {
+        onPermissionRequest: approveAll,
+        model: modelId,
+      });
+    } else {
+      session = await client.createSession({
+        onPermissionRequest: approveAll,
+        model: modelId,
+      });
     }
 
-    console.log("[copilot] spawning:", "copilot", args.join(" "));
-    const proc = spawn("copilot", args, { env: process.env });
-    proc.stdin.end();
+    const actualSessionId = session.sessionId;
 
-    let buffer = "";
-    let stderrBuf = "";
-    let resolved = false;
-    let fullText = "";
-    let allTools = [];
+    // Handle streaming text deltas
+    session.on("assistant.message_delta", (event) => {
+      fullText += event.data.deltaContent;
+      if (onText) onText(fullText);
+    });
 
-    function finish(result) {
-      if (resolved) return;
-      resolved = true;
-      console.log("[copilot] finished:", JSON.stringify(result).slice(0, 300));
-      resolve(result);
-    }
-
-    function parseLine(line) {
-      if (!line.trim()) return;
-      let event;
-      try {
-        event = JSON.parse(line);
-      } catch (e) {
-        console.log("[copilot] non-json line:", line.slice(0, 200));
-        return;
-      }
-
-      const type = event.type || "";
-      console.log("[copilot] event:", type);
-
-      // Text streaming delta
-      if (type === "assistant.message_delta" && event.textDelta) {
-        fullText += event.textDelta;
-        console.log("[copilot] text delta:", event.textDelta.slice(0, 100));
+    // Handle complete assistant messages (includes tool requests)
+    session.on("assistant.message", (event) => {
+      if (event.data.content) {
+        fullText = event.data.content;
         if (onText) onText(fullText);
       }
-
-      // Complete message with tool requests
-      if (type === "assistant.message") {
-        if (event.message?.content) {
-          fullText = extractText(event.message.content);
-        }
-        if (event.toolRequests?.length) {
-          const names = event.toolRequests.map((t) => t.name);
-          allTools.push(...names);
-          console.log("[copilot] tools:", names);
-          if (onTool) onTool(names);
-        }
-        if (fullText && onText) onText(fullText);
+      if (event.data.toolRequests?.length) {
+        const names = event.data.toolRequests.map((t) => t.name);
+        names.forEach((n) => allTools.add(n));
+        console.log("[copilot-sdk] tools:", names);
+        if (onTool) onTool(names);
       }
+    });
 
-      // Final result
-      if (type === "result") {
-        const premiumRequests = event.usage?.premiumRequests || 0;
-        const estimatedCost = premiumRequests * 0.04;
-        finish({
-          text: event.result || fullText || "",
-          sessionId: event.sessionId || null,
-          cost: estimatedCost,
-          isError: event.exitCode !== 0,
-        });
+    // Track usage/cost
+    session.on("assistant.usage", (event) => {
+      if (event.data.cost) {
+        totalCost += event.data.cost;
       }
+    });
+
+    // Handle errors
+    session.on("session.error", (event) => {
+      console.error("[copilot-sdk] session error:", event.data.errorType, event.data.message);
+    });
+
+    // Send message and wait for completion
+    const response = await session.sendAndWait(
+      { prompt },
+      5 * 60 * 1000 // 5 minute timeout
+    );
+
+    // Extract final text from the response if available
+    if (response?.data?.content) {
+      fullText = response.data.content;
     }
 
-    proc.stdout.on("data", (chunk) => {
-      const str = chunk.toString();
-      console.log("[copilot] stdout chunk:", str.length, "bytes");
-      buffer += str;
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-      lines.forEach(parseLine);
-    });
+    // Disconnect session (preserves data on disk for resume)
+    await session.disconnect();
 
-    proc.stderr.on("data", (chunk) => {
-      const str = chunk.toString();
-      stderrBuf += str;
-      console.log("[copilot] stderr:", str.trimEnd());
-    });
+    // Estimate cost: each premium request costs ~$0.04
+    const estimatedCost = totalCost > 0 ? totalCost * 0.04 : 0;
 
-    proc.on("close", (code) => {
-      console.log("[copilot] process closed with code:", code);
-      if (stderrBuf.trim()) {
-        console.log("[copilot] full stderr:", stderrBuf.trimEnd());
-      }
-      if (buffer.trim()) parseLine(buffer);
-      if (!resolved) {
-        finish({
-          text: `Copilot exited with code ${code}\n${stderrBuf}`.trim(),
-          sessionId: null,
-          cost: 0,
-          isError: true,
-        });
-      }
-    });
-
-    proc.on("error", (err) => {
-      console.error("[copilot] spawn error:", err.message);
-      finish({
-        text: `Failed to start copilot: ${err.message}`,
-        sessionId: null,
-        cost: 0,
-        isError: true,
-      });
-    });
-  });
+    return {
+      text: fullText || "",
+      sessionId: actualSessionId,
+      cost: estimatedCost,
+      isError: false,
+    };
+  } catch (err) {
+    console.error("[copilot-sdk] error:", err.message);
+    return {
+      text: `Copilot SDK error: ${err.message}`,
+      sessionId: null,
+      cost: 0,
+      isError: true,
+    };
+  }
 }
 
 function extractText(content) {
