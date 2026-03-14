@@ -19,14 +19,7 @@ function createBot() {
 
     // Register commands for the command menu
     const commands = [
-      { command: "start", description: "Start a Claude session" },
       { command: "clear", description: "Start a new conversation" },
-      { command: "cost", description: "Show session cost" },
-      { command: "sonnet", description: "Switch to Claude Sonnet" },
-      { command: "haiku", description: "Switch to Claude Haiku" },
-      { command: "opus", description: "Switch to Claude Opus" },
-      { command: "status", description: "Show git status" },
-      { command: "help", description: "Show help message" },
     ];
     bot.setMyCommands(commands).catch((err) => {
       console.error("[bot] failed to set commands:", err.message);
@@ -130,57 +123,6 @@ function createBot() {
       const oldImages = sessions.clear(chatId);
       cleanupImages(oldImages);
       bot.sendMessage(chatId, "Session cleared. Next message starts fresh.");
-      return;
-    }
-    if (/^\/cost(@\w+)?$/.test(text)) {
-      const cost = sessions.getCost(chatId);
-      bot.sendMessage(chatId, `Session cost so far: $${cost.toFixed(4)}`);
-      return;
-    }
-    if (/^\/help(@\w+)?$/.test(text)) {
-      const session = sessions.get(chatId);
-      const model = sessions.getModel(chatId) || "haiku";
-      const cost = sessions.getCost(chatId);
-      const sessionInfo = session?.sessionId
-        ? `Session ID: ${session.sessionId.slice(0, 8)}...`
-        : "No active session";
-
-      bot.sendMessage(
-        chatId,
-        [
-          "📋 Commands:",
-          "/start   – Start a Claude session",
-          "/clear   – Start a new conversation",
-          "/cost    – Show session cost",
-          "/sonnet  – Switch to Claude Sonnet",
-          "/haiku   – Switch to Claude Haiku",
-          "/opus    – Switch to Claude Opus",
-          "/status  – Show git status",
-          "/help    – Show this message",
-          "",
-          "📊 Session Information:",
-          `Current Model: ${model}`,
-          `Total Cost: $${cost.toFixed(4)}`,
-          sessionInfo,
-          "",
-          "Everything else is sent to Claude.",
-        ].join("\n"),
-      );
-      return;
-    }
-    if (/^\/start(@\w+)?$/.test(text)) {
-      bot.sendMessage(chatId, "Send any message to start a Claude session.");
-      return;
-    }
-    if (/^\/status(@\w+)?$/.test(text)) {
-      console.log("[bot] /status from chat", chatId);
-      handleGitStatus(bot, chatId);
-      return;
-    }
-    if (/^\/(sonnet|haiku|opus)(@\w+)?$/.test(text)) {
-      const model = text.match(/^\/(sonnet|haiku|opus)/)[1];
-      sessions.setModel(chatId, model);
-      bot.sendMessage(chatId, `Model switched to ${model}.`);
       return;
     }
 
@@ -442,27 +384,5 @@ async function handlePhotoMessage(bot, chatId, fileIds, text, username) {
   }
 }
 
-// ── Git status handler ────────────────────────────────────
-
-function handleGitStatus(bot, chatId) {
-  try {
-    const cwd = process.cwd();
-    const status = execSync("git status --short", { cwd, encoding: "utf8" }).trim();
-    const log = execSync("git log --oneline -10", { cwd, encoding: "utf8" }).trim();
-
-    const lines = ["📂 Git Status"];
-    if (status) {
-      lines.push("", "Changes:", status);
-    } else {
-      lines.push("", "Working tree clean.");
-    }
-    lines.push("", "Recent commits:", log);
-
-    bot.sendMessage(chatId, lines.join("\n"));
-  } catch (err) {
-    console.error("[bot] git status error:", err.message);
-    bot.sendMessage(chatId, `Git status error: ${err.message}`);
-  }
-}
 
 module.exports = { createBot };
