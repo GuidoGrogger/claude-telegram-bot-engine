@@ -59,6 +59,52 @@ function markdownToHtml(text) {
       }
       return `• ${content.trim()}\n`;
     },
+    table({ header, rows }) {
+      // Collect all cells: header + body rows
+      const allRows = [];
+
+      // Parse header row
+      const headerCells = header.map((cell) =>
+        this.parser.parseInline(cell.tokens).trim()
+      );
+      allRows.push(headerCells);
+
+      // Parse body rows
+      for (const row of rows) {
+        allRows.push(
+          row.map((cell) => this.parser.parseInline(cell.tokens).trim())
+        );
+      }
+
+      // Calculate column widths
+      const colCount = headerCells.length;
+      const widths = Array(colCount).fill(0);
+      for (const row of allRows) {
+        for (let i = 0; i < row.length; i++) {
+          // Strip HTML tags for width calculation
+          const plain = row[i].replace(/<[^>]+>/g, "");
+          widths[i] = Math.max(widths[i], plain.length);
+        }
+      }
+
+      // Render rows as fixed-width text
+      const pad = (str, w) => {
+        const plain = str.replace(/<[^>]+>/g, "");
+        return str + " ".repeat(Math.max(0, w - plain.length));
+      };
+      const sep = widths.map((w) => "-".repeat(w)).join("-+-");
+
+      const lines = [];
+      // Header
+      lines.push(headerCells.map((c, i) => pad(c, widths[i])).join(" | "));
+      lines.push(sep);
+      // Body
+      for (const row of allRows.slice(1)) {
+        lines.push(row.map((c, i) => pad(c, widths[i])).join(" | "));
+      }
+
+      return `<pre>${lines.join("\n")}</pre>\n`;
+    },
     hr() {
       return "---\n";
     },

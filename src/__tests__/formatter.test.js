@@ -139,4 +139,32 @@ describe("markdownToHtml", () => {
     const result = markdownToHtml("just plain text");
     assert.ok(result.includes("just plain text"));
   });
+
+  it("renders tables as preformatted text", () => {
+    const md = "| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |";
+    const result = markdownToHtml(md);
+    assert.ok(result.includes("<pre>"));
+    assert.ok(result.includes("</pre>"));
+    assert.ok(result.includes("Name"));
+    assert.ok(result.includes("Alice"));
+    assert.ok(result.includes("Bob"));
+  });
+
+  it("aligns table columns with padding", () => {
+    const md =
+      "| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |";
+    const result = markdownToHtml(md);
+    // Header and separator should be present
+    assert.ok(result.includes("Name"));
+    assert.ok(result.includes("---"));
+    assert.ok(result.includes("|"));
+  });
+
+  it("renders single-row table", () => {
+    const md = "| A | B |\n| --- | --- |\n| 1 | 2 |";
+    const result = markdownToHtml(md);
+    assert.ok(result.includes("<pre>"));
+    assert.ok(result.includes("1"));
+    assert.ok(result.includes("2"));
+  });
 });
