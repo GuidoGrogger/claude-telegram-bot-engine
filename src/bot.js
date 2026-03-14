@@ -7,6 +7,7 @@ const { splitMessage, truncate, toolLine, markdownToHtml } = require("./formatte
 const { downloadBuffer, transcribeAudio } = require("./transcribe");
 const { autoCommit } = require("./git");
 const { execSync } = require("child_process");
+const { getBestPhoto, downloadPhotos, cleanupImages } = require("./images");
 
 function createBot() {
   const bot = new TelegramBot(config.telegramToken, { polling: true });
@@ -47,7 +48,8 @@ function createBot() {
       "user",
       msg.from?.username || msg.from?.id,
       ":",
-      (msg.text || "").slice(0, 80),
+      (msg.text || msg.caption || "").slice(0, 80),
+      msg.photo ? `[${msg.photo.length} photo size(s)]` : "",
     );
 
     // ── Voice message handling ─────────────────────────────
@@ -67,6 +69,39 @@ function createBot() {
       );
       const username = msg.from?.username || msg.from?.first_name || String(msg.from?.id);
       enqueue(chatId, () => handleVoiceMessage(bot, chatId, msg, username));
+      return;
+    }
+
+    // ── Photo message handling ─────────────────────────────
+    if (msg.photo) {
+      const chatId = msg.chat.id;
+      const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
+      if (isGroup && !config.respondToAllGroupMessages) {
+        if (!botInfo) return;
+        const isReply = msg.reply_to_message?.from?.id === botInfo.id;
+        if (!isReply) return;
+      }
+
+      const best = getBestPhoto(msg.photo);
+      if (!best) return;
+
+      const username = msg.from?.username || msg.from?.first_name || String(msg.from?.id);
+      const caption = msg.caption || "";
+
+      // Strip @mention from caption
+      let text = caption;
+      if (botInfo) {
+        text = text.replace(new RegExp(`@${botInfo.username}`, "gi"), "").trim();
+      }
+
+      if (msg.media_group_id) {
+        // Part of a media group — batch photos together
+        handleMediaGroup(bot, msg.media_group_id, chatId, best.file_id, text, username);
+      } else {
+        // Single photo
+        console.log("[bot] single photo received [chat %d] file_id: %s", chatId, best.file_id);
+        enqueue(chatId, () => handlePhotoMessage(bot, chatId, [best.file_id], text, username));
+      }
       return;
     }
 
@@ -92,7 +127,8 @@ function createBot() {
     // ── Commands (checked after stripping mention) ──────────
     if (/^\/clear(@\w+)?$/.test(text)) {
       console.log("[bot] /clear from chat", chatId);
-      sessions.clear(chatId);
+      const oldImages = sessions.clear(chatId);
+      cleanupImages(oldImages);
       bot.sendMessage(chatId, "Session cleared. Next message starts fresh.");
       return;
     }
@@ -174,7 +210,7 @@ function enqueue(chatId, fn) {
 
 // ── Core handler ──────────────────────────────────────────
 
-async function handleMessage(bot, chatId, text, username) {
+async function handleMessage(bot, chatId, text, username, images) {
   console.log("[bot] handling message for chat", chatId);
 
   const session = sessions.get(chatId);
@@ -182,6 +218,11 @@ async function handleMessage(bot, chatId, text, username) {
   const isContinuation = sessionId !== null;
   const previousCost = sessions.getCost(chatId);
   console.log("[bot] session:", sessionId || "(new)");
+
+  // Store new images in session so they persist (files stay on disk until /clear)
+  if (images?.length) {
+    sessions.addImages(chatId, images);
+  }
 
   const placeholder = await bot.sendMessage(chatId, "...");
   const msgId = placeholder.message_id;
@@ -215,6 +256,7 @@ async function handleMessage(bot, chatId, text, username) {
   const model = sessions.getModel(chatId);
   const result = await runAITool(text, sessionId, {
     model,
+    images,
     onText: (partial) => {
       let display = partial;
       if (tools.size) display = toolLine([...tools]) + "\n\n" + display;
@@ -274,9 +316,10 @@ async function handleMessage(bot, chatId, text, username) {
   // Auto-commit and push changes
   const currentCost = result.cost || 0;
   const totalCost = previousCost + currentCost;
+  const commitText = images?.length ? `[${images.length} image(s)] ${text}` : text;
   autoCommit({
     projectDir: process.cwd(),
-    messageText: text,
+    messageText: commitText,
     username: username || "unknown",
     cost: currentCost,
     totalCost,
@@ -328,6 +371,74 @@ async function handleVoiceMessage(bot, chatId, msg, username) {
         message_id: msgId,
       })
       .catch((e) => console.error("[bot] edit error:", e.message));
+  }
+}
+
+// ── Photo handler ─────────────────────────────────────────
+
+const mediaGroups = new Map();
+const MEDIA_GROUP_DELAY = 500;
+
+function handleMediaGroup(bot, groupId, chatId, fileId, caption, username) {
+  let group = mediaGroups.get(groupId);
+  if (!group) {
+    group = { chatId, username, caption: "", fileIds: [], timer: null };
+    mediaGroups.set(groupId, group);
+  }
+  group.fileIds.push(fileId);
+  if (caption) group.caption = caption;
+
+  clearTimeout(group.timer);
+  group.timer = setTimeout(() => {
+    mediaGroups.delete(groupId);
+    console.log(
+      "[bot] media group %s complete: %d photos [chat %d]",
+      groupId,
+      group.fileIds.length,
+      group.chatId,
+    );
+    enqueue(group.chatId, () =>
+      handlePhotoMessage(bot, group.chatId, group.fileIds, group.caption, group.username),
+    );
+  }, MEDIA_GROUP_DELAY);
+}
+
+async function handlePhotoMessage(bot, chatId, fileIds, text, username) {
+  const placeholder = await bot.sendMessage(chatId, "Processing image(s)...");
+  const msgId = placeholder.message_id;
+
+  let imagePaths = [];
+  try {
+    imagePaths = await downloadPhotos(bot, fileIds);
+    console.log("[bot] downloaded %d photo(s) for chat %d", imagePaths.length, chatId);
+
+    await bot
+      .editMessageText(`Processing ${imagePaths.length} image(s)...`, {
+        chat_id: chatId,
+        message_id: msgId,
+      })
+      .catch(() => {});
+
+    await handleMessage(bot, chatId, text || "", username, imagePaths);
+
+    // Delete the "Processing" placeholder (handleMessage sends its own)
+    await bot.deleteMessage(chatId, msgId).catch(() => {});
+  } catch (err) {
+    console.error("[bot] photo processing error:", err);
+    await bot
+      .editMessageText(`Could not process image(s): ${err.message}`, {
+        chat_id: chatId,
+        message_id: msgId,
+      })
+      .catch((e) => console.error("[bot] edit error:", e.message));
+  } finally {
+    // Images are now managed by the session and cleaned up on /clear
+    // Only cleanup if handleMessage failed before images could be added to session
+    if (imagePaths.length > 0) {
+      const sessionImages = sessions.getImages(chatId);
+      const orphaned = imagePaths.filter((p) => !sessionImages.includes(p));
+      if (orphaned.length > 0) cleanupImages(orphaned);
+    }
   }
 }
 

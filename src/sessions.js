@@ -4,7 +4,7 @@
  */
 class SessionStore {
   constructor() {
-    this.sessions = new Map(); // chatId -> { sessionId, totalCost }
+    this.sessions = new Map(); // chatId -> { sessionId, totalCost, model, images }
   }
 
   get(chatId) {
@@ -14,11 +14,37 @@ class SessionStore {
   set(chatId, sessionId, cost = 0) {
     const existing = this.sessions.get(chatId);
     const totalCost = (existing?.totalCost || 0) + cost;
-    this.sessions.set(chatId, { sessionId, totalCost, model: existing?.model || null });
+    this.sessions.set(chatId, {
+      sessionId,
+      totalCost,
+      model: existing?.model || null,
+      images: existing?.images || [],
+    });
   }
 
   clear(chatId) {
+    const existing = this.sessions.get(chatId);
+    const images = existing?.images || [];
     this.sessions.delete(chatId);
+    return images;
+  }
+
+  addImages(chatId, imagePaths) {
+    const existing = this.sessions.get(chatId);
+    if (existing) {
+      existing.images = [...(existing.images || []), ...imagePaths];
+    } else {
+      this.sessions.set(chatId, {
+        sessionId: null,
+        totalCost: 0,
+        model: null,
+        images: [...imagePaths],
+      });
+    }
+  }
+
+  getImages(chatId) {
+    return this.sessions.get(chatId)?.images || [];
   }
 
   getCost(chatId) {
