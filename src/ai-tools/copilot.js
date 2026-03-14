@@ -1,3 +1,5 @@
+const { buildImagePrompt } = require("../images");
+
 // @github/copilot-sdk is ESM-only, so we lazy-load via dynamic import()
 let _sdk = null;
 async function getSDK() {
@@ -26,8 +28,9 @@ async function getClient() {
   return sharedClient;
 }
 
-async function runAITool(prompt, sessionId, { onText, onTool, model } = {}) {
+async function runAITool(prompt, sessionId, { onText, onTool, model, images } = {}) {
   const modelId = MODEL_IDS[model] || MODEL_IDS[DEFAULT_MODEL];
+  const effectivePrompt = buildImagePrompt(prompt, images);
   const { approveAll } = await getSDK();
   let fullText = "";
   let allTools = new Set();
@@ -87,7 +90,7 @@ async function runAITool(prompt, sessionId, { onText, onTool, model } = {}) {
 
     // Send message and wait for completion
     const response = await session.sendAndWait(
-      { prompt },
+      { prompt: effectivePrompt },
       5 * 60 * 1000 // 5 minute timeout
     );
 

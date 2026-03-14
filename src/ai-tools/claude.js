@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const { buildImagePrompt } = require("../images");
 
 const MODEL_IDS = {
   haiku: "claude-haiku-4-5-20251001",
@@ -8,9 +9,10 @@ const MODEL_IDS = {
 
 const DEFAULT_MODEL = "haiku";
 
-function runAITool(prompt, sessionId, { onText, onTool, model } = {}) {
+function runAITool(prompt, sessionId, { onText, onTool, model, images } = {}) {
   return new Promise((resolve) => {
     const modelId = MODEL_IDS[model] || MODEL_IDS[DEFAULT_MODEL];
+    const effectivePrompt = buildImagePrompt(prompt, images);
     const args = [
       "--print",
       "--model",
@@ -20,8 +22,10 @@ function runAITool(prompt, sessionId, { onText, onTool, model } = {}) {
       "stream-json",
       "--verbose",
       "--include-partial-messages",
+      "--append-system-prompt",
+      "IMPORTANT: Do not use your auto-memory system. Do not read from or write to ~/.claude/projects/ memory files (MEMORY.md or any files in the memory/ subdirectory there). All memory and knowledge should be stored exclusively in the project's own memory/ directory.",
       "-p",
-      prompt,
+      effectivePrompt,
     ];
 
     if (sessionId) {
